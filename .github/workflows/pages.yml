@@ -1,0 +1,89 @@
+name: Deploy LittleLink Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install minifiers
+        run: |
+          npm i -g html-minifier-terser clean-css-cli svgo
+
+      - name: Build Pages Dir
+        run: |
+          set -euxo pipefail
+          mkdir -p dist/css dist/images dist/fonts
+          cp index.html dist/
+          #[ -f privacy.html ] && cp privacy.html dist/ || true
+          [ -d css ] && cp -r css/* dist/css/ || true
+          [ -d images ] && cp -r images/* dist/images/ || true
+          [ -d fonts ] && cp -r fonts/* dist/fonts/ || true
+          printf '' > dist/.nojekyll
+
+      - name: Overlay Edits
+        if: ${{ hashFiles('pages/**') != '' }}
+        run: |
+          set -euxo pipefail
+          rsync -a pages/ dist/
+
+      - name: Minify and Clean
+        run: |
+          set -euxo pipefail
+
+          shopt -s nullglob
+          for f in dist/*.html; do
+            html-minifier-terser \
+              --collapse-whitespace \
+              --remove-comments \
+              --remove-attribute-quotes \
+              --minify-css true \
+              --minify-js true \
+              -o "$f.min" "$f"
+            mv "$f.min" "$f"
+          done
+
+          for f in dist/css/*.css; do
+            cleancss -O2 -o "$f.min" "$f"
+            mv "$f.min" "$f"
+          done
+
+          find dist -type f -name '*.svg' -print0 | xargs -0 -I{} svgo --multipass -q {}
+
+          find dist -type f \( -iname 'readme*' -o -iname '*.md' -o -iname '*.yml' -o -iname '*.yaml' \) -delete
+
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
