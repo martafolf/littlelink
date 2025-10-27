@@ -47,6 +47,28 @@ jobs:
           set -euxo pipefail
           rsync -a pages/ dist/
 
+      - name: Pull LittleLink Extended (sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: sethcottle/littlelink-extended
+          path: .littlelink-extended
+          sparse-checkout: |
+            css/brands-extended.css
+            css/sensitive-content.css
+            images/icons-extended
+            js/sensitive-content.js
+          sparse-checkout-cone-mode: false
+
+      - name: Add LittleLink Extended assets + inject tags
+        run: |
+          set -euxo pipefail
+          mkdir -p dist/css dist/images dist/js
+
+          [ -f .littlelink-extended/css/brands-extended.css ] && cp .littlelink-extended/css/brands-extended.css dist/css/ || true
+          #[ -f .littlelink-extended/css/sensitive-content.css ] && cp .littlelink-extended/css/sensitive-content.css dist/css/ || true
+          [ -d .littlelink-extended/images/icons-extended ] && rsync -a .littlelink-extended/images/icons-extended dist/images/ || true
+          #[ -f .littlelink-extended/js/sensitive-content.js ] && cp .littlelink-extended/js/sensitive-content.js dist/js/ || true
+
       - name: Minify and Clean
         run: |
           set -euxo pipefail
